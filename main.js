@@ -3,23 +3,124 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const { spawn } = require('child_process');
+const { autoUpdater } = require('electron-updater');
 
 let win;
+let updateInProgress = false;
 const downloads = new Map();
 
 function createWindow() {
   win = new BrowserWindow({
     width: 1440, height: 900, minWidth: 1100, minHeight: 700,
-    title: 'Sunny Games Launcher', icon: path.join(__dirname, 'icon.ico'), backgroundColor: '#070a12', autoHideMenuBar: true,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
+    title: 'Sunny Games Launcher',
+    icon: path.join(__dirname, 'icon.ico'),
+    backgroundColor: '#070a12',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
   });
+
   win.loadFile('index.html');
-  win.webContents.on('did-finish-load', () => injectAccountFeatures());
+  win.webContents.on('did-finish-load', () => {
+    injectAccountFeatures();
+    injectLauncherUpdateUI();
+  });
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    if (/^https?:\\/\\//i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
+
+  // Give the renderer time to initialize before checking the GitHub release.
+  setTimeout(checkLauncherUpdate, 2500);
 }
+
+function injectLauncherUpdateUI() {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.executeJavaScript(`(() => {
+    if (window.__sunnyUpdateUI) return;
+    window.__sunnyUpdateUI = true;
+
+    const style = document.createElement('style');
+    style.textContent = `
+      #sunny-launcher-update-lock{position:fixed;inset:0;background:rgba(3,5,10,.96);backdrop-filter:blur(14px);z-index:99999;display:grid;place-items:center;color:#eef2ff}
+      #sunny-launcher-update-lock.hidden{display:none}
+      .sunny-update-card{width:min(560px,90vw);padding:38px;border:1px solid #343d53;border-radius:24px;background:#0d1420;box-shadow:0 30px 100px #0008;text-align:center}
+      .sunny-update-icon{font-size:64px;color:#ffc928;margin-bottom:8px}
+      .sunny-update-card h2{margin:0 0 10px;font-size:28px}
+      .sunny-update-card p{color:#8d97aa;line-height:1.6;margin:8px 0}
+      .sunny-update-progress{height:9px;background:#1a2231;border-radius:99px;overflow:hidden;margin:22px 0 10px}
+      .sunny-update-progress i{display:block;height:100%;width:0;background:#ffc928;transition:width .2s}
+      .sunny-update-status{font-size:12px;color:#aab3c4}
+    `;
+    document.head.appendChild(style);
+
+    const lock = document.createElement('div');
+    lock.id = 'sunny-launcher-update-lock';
+    lock.className = 'hidden';
+    lock.innerHTML = '<div class="sunny-update-card"><div class="sunny-update-icon">☀</div><h2>Neues Launcher-Update</h2><p id="sunny-update-text">Eine neue Version des Sunny Games Launchers ist verfügbar.</p><div class="sunny-update-progress"><i id="sunny-update-bar"></i></div><div class="sunny-update-status" id="sunny-update-status">Update wird vorbereitet…</div></div>';
+    document.body.appendChild(lock);
+
+    window.addEventListener('sunny-launcher-update-available', e => {
+      lock.classList.remove('hidden');
+      document.getElementById('sunny-update-text').textContent = 'Version ' + e.detail.version + ' wird jetzt installiert. Die alte Launcher-Version kann nicht weiter verwendet werden.';
+      document.getElementById('sunny-update-status').textContent = 'Update wird heruntergeladen…';
+      document.getElementById('sunny-update-bar').style.width = '5%';
+    });
+    window.addEventListener('sunny-launcher-update-progress', e => {
+      const percent = Math.max(5, Math.min(100, Number(e.detail.percent || 0)));
+      document.getElementById('sunny-update-bar').style.width = percent + '%';
+      document.getElementById('sunny-update-status').textContent = 'Update wird heruntergeladen… ' + percent + '%';
+    });
+    window.addEventListener('sunny-launcher-update-installing', () => {
+      lock.classList.remove('hidden');
+      document.getElementById('sunny-update-bar').style.width = '100%';
+      document.getElementById('sunny-update-status').textContent = 'Neue Version wird installiert…';
+    });
+  })()`);
+}
+
+function notifyRenderer(eventName, detail) {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent(${JSON.stringify(eventName)}, {detail:${JSON.stringify(detail || {})}}))`).catch(() => {});
+}
+
+async function checkLauncherUpdate() {
+  if (updateInProgress || !app.isPackaged) return;
+  try {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = false;
+    autoUpdater.allowDowngrade = false;
+    await autoUpdater.checkForUpdates();
+  } catch (e) {
+    // No internet / no published release: keep the launcher usable.
+    console.warn('Launcher update check failed:', e.message);
+  }
+}
+
+autoUpdater.on('checking-for-update', () => {});
+autoUpdater.on('update-available', info => {
+  updateInProgress = true;
+  notifyRenderer('sunny-launcher-update-available', { version: info.version });
+});
+autoUpdater.on('download-progress', progress => {
+  if (!updateInProgress) return;
+  notifyRenderer('sunny-launcher-update-progress', { percent: Math.round(progress.percent || 0) });
+});
+autoUpdater.on('update-downloaded', () => {
+  if (!updateInProgress) return;
+  notifyRenderer('sunny-launcher-update-installing', {});
+  setTimeout(() => {
+    try { autoUpdater.quitAndInstall(false, true); }
+    catch (e) { console.error('Launcher update installation failed:', e); }
+  }, 900);
+});
+autoUpdater.on('error', err => {
+  console.error('Launcher updater error:', err.message);
+  updateInProgress = false;
+});
 
 function injectAccountFeatures() {
   if (!win || win.isDestroyed()) return;
@@ -28,13 +129,18 @@ function injectAccountFeatures() {
     window.__sunnyAccountFeatures = true;
 
     const style = document.createElement('style');
-    style.textContent = '.accountTools{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.accountBox{background:#101624;border:1px solid #293145;border-radius:14px;padding:18px;margin-bottom:18px}.accountBox h3{margin:0 0 6px}.accountBox p{color:#737e94;font-size:12px;margin:0}.dangerBtn{border:1px solid #66353d;background:#211319;color:#ff9b9b;padding:9px 14px;border-radius:10px;cursor:pointer}';
+    style.textContent = '.accountTools{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.accountBox{background:#101624;border:1px solid #293145;border-radius:14px;padding:18px;margin-bottom:18px}.accountBox h3{margin:0 0 6px}.accountBox p{color:#737e94;font-size:12px;margin:0}.dangerBtn{border:1px solid #66353d;background:#211319;color:#ff9b9b;padding:9px 14px;border-radius:10px;cursor:pointer}.accountEditForm{display:flex;flex-direction:column;gap:12px}.accountEditForm input{background:#080d16;border:1px solid #293246;color:#fff;padding:12px;border-radius:10px}';
     document.head.appendChild(style);
 
     const accountModal = document.createElement('div');
     accountModal.id = 'account-modal'; accountModal.className = 'modal hidden';
-    accountModal.innerHTML = '<div class="modalCard"><div class="modalHead"><div><div class="eyebrow">SUNNY ACCOUNT</div><h3>Konto erstellen</h3></div><button id="close-account">×</button></div><form id="account-form"><input id="account-username" autocomplete="username" placeholder="Benutzername" required minlength="3"><input id="account-email" type="email" autocomplete="email" placeholder="E-Mail-Adresse" required><input id="account-display" placeholder="Anzeigename"><input id="account-pass" type="password" autocomplete="new-password" placeholder="Passwort" required minlength="6"><input id="account-pass2" type="password" autocomplete="new-password" placeholder="Passwort wiederholen" required minlength="6"><button class="primary" type="submit">Account erstellen</button></form></div>';
+    accountModal.innerHTML = '<div class="modalCard"><div class="modalHead"><div><div class="eyebrow">SUNNY ACCOUNT</div><h3 id="account-modal-title">Konto erstellen</h3></div><button id="close-account">×</button></div><form id="account-form"><input id="account-username" autocomplete="username" placeholder="Benutzername" required minlength="3"><input id="account-email" type="email" autocomplete="email" placeholder="E-Mail-Adresse" required><input id="account-display" placeholder="Anzeigename"><input id="account-pass" type="password" autocomplete="new-password" placeholder="Passwort" required minlength="6"><input id="account-pass2" type="password" autocomplete="new-password" placeholder="Passwort wiederholen" required minlength="6"><button class="primary" type="submit">Account erstellen</button></form></div>';
     document.body.appendChild(accountModal);
+
+    const editModal = document.createElement('div');
+    editModal.id = 'account-edit-modal'; editModal.className = 'modal hidden';
+    editModal.innerHTML = '<div class="modalCard"><div class="modalHead"><div><div class="eyebrow">SUNNY ACCOUNT</div><h3>Account bearbeiten</h3></div><button id="close-account-edit">×</button></div><form id="account-edit-form" class="accountEditForm"><input id="edit-display" placeholder="Anzeigename" required><input id="edit-email" type="email" placeholder="E-Mail-Adresse" required><button class="primary" type="submit">Änderungen speichern</button></form></div>';
+    document.body.appendChild(editModal);
 
     const settings = document.getElementById('settings');
     if (settings && !document.getElementById('account-settings-box')) {
@@ -55,28 +161,63 @@ function injectAccountFeatures() {
     const info = document.getElementById('account-settings-info');
     const modal = accountModal;
 
+    function getLoggedUserName(){ return typeof currentUser !== 'undefined' && currentUser ? String(currentUser) : localStorage.getItem('sunny_session') || localStorage.getItem('SESSION_KEY') || ''; }
+    async function getAccountDoc(username){ return firebase.firestore().collection('users').doc(username).get(); }
+
     function refreshAccountBox(){
-      const logged = !!currentUser;
+      const logged = !!getLoggedUserName();
       createBtn?.classList.toggle('hidden', logged);
       editBtn?.classList.toggle('hidden', !logged);
       logoutBtn?.classList.toggle('hidden', !logged);
-      if (logged) info.textContent = 'Angemeldet als ' + (currentUserData?.displayName || currentUserData?.username || currentUser) + (currentUserData?.email ? ' · ' + currentUserData.email : '');
-      else info.textContent = 'Anmelden, um deine Account-Einstellungen zu verwalten.';
+      if (logged) {
+        const data = (typeof currentUserData !== 'undefined' && currentUserData) ? currentUserData : {};
+        info.textContent = 'Angemeldet als ' + (data.displayName || data.username || getLoggedUserName()) + (data.email ? ' · ' + data.email : '');
+      } else info.textContent = 'Anmelden, um deine Account-Einstellungen zu verwalten.';
     }
 
-    createBtn?.addEventListener('click', () => { modal.querySelector('h3').textContent='Konto erstellen'; document.getElementById('account-form').reset(); modal.classList.remove('hidden'); document.getElementById('account-username').focus(); });
+    createBtn?.addEventListener('click', () => { modal.querySelector('#account-modal-title').textContent='Konto erstellen'; document.getElementById('account-form').reset(); document.getElementById('account-pass').required=true; document.getElementById('account-pass2').required=true; modal.classList.remove('hidden'); document.getElementById('account-username').focus(); });
     document.getElementById('close-account')?.addEventListener('click', () => modal.classList.add('hidden'));
+    document.getElementById('close-account-edit')?.addEventListener('click', () => editModal.classList.add('hidden'));
     logoutBtn?.addEventListener('click', () => window.logout());
+
     editBtn?.addEventListener('click', async () => {
-      if (!currentUser) return openLogin();
-      const display = prompt('Neuer Anzeigename:', currentUserData?.displayName || currentUserData?.username || '');
-      if (display === null) return;
-      const email = prompt('Neue E-Mail-Adresse:', currentUserData?.email || '');
-      if (email === null) return;
+      const username = getLoggedUserName();
+      if (!username) return openLogin();
       try {
-        await db.collection('users').doc(currentUser).set({displayName: display.trim() || currentUser, email: email.trim()}, {merge:true});
-        currentUserData.displayName = display.trim() || currentUser; currentUserData.email = email.trim(); renderAuth(); refreshAccountBox(); toast('Account-Einstellungen gespeichert.');
-      } catch(e) { toast('Speichern fehlgeschlagen: '+e.message); }
+        const snap = await getAccountDoc(username);
+        if (!snap.exists) return toast('Account wurde in der Sunny-Datenbank nicht gefunden.');
+        const data = snap.data() || {};
+        document.getElementById('edit-display').value = data.displayName || data.username || username;
+        document.getElementById('edit-email').value = data.email || '';
+        editModal.classList.remove('hidden');
+        document.getElementById('edit-display').focus();
+      } catch (e) {
+        toast('Account konnte nicht geladen werden: ' + e.message);
+      }
+    });
+
+    document.getElementById('account-edit-form')?.addEventListener('submit', async e => {
+      e.preventDefault();
+      const username = getLoggedUserName();
+      if (!username) return openLogin();
+      const displayName = document.getElementById('edit-display').value.trim();
+      const email = document.getElementById('edit-email').value.trim();
+      if (!displayName || !email) return toast('Bitte alle Felder ausfüllen.');
+      try {
+        const firestore = firebase.firestore();
+        const emailSnap = await firestore.collection('users').where('email','==',email).limit(2).get();
+        const takenByOther = emailSnap.docs.some(d => d.id !== username);
+        if (takenByOther) return toast('Diese E-Mail-Adresse wird bereits verwendet.');
+        await firestore.collection('users').doc(username).set({displayName, email, updatedAt:firebase.firestore.FieldValue.serverTimestamp()}, {merge:true});
+        if (typeof currentUserData !== 'undefined' && currentUserData) { currentUserData.displayName = displayName; currentUserData.email = email; }
+        if (typeof renderAuth === 'function') renderAuth();
+        editModal.classList.add('hidden');
+        refreshAccountBox();
+        toast('Account-Einstellungen gespeichert.');
+      } catch (e) {
+        console.error(e);
+        toast('Speichern fehlgeschlagen: ' + e.message);
+      }
     });
 
     document.getElementById('account-form')?.addEventListener('submit', async e => {
@@ -90,19 +231,19 @@ function injectAccountFeatures() {
       try {
         const existing = await getSunnyUserDocument(username);
         if (existing.exists) return toast('Dieser Benutzername ist bereits vergeben.');
-        const emailSnap = await db.collection('users').where('email','==',email).limit(1).get();
+        const emailSnap = await firebase.firestore().collection('users').where('email','==',email).limit(1).get();
         if (!emailSnap.empty) return toast('Diese E-Mail-Adresse ist bereits registriert.');
         const salt = crypto.getRandomValues(new Uint8Array(16));
         const saltText = Array.from(salt).map(x=>x.toString(16).padStart(2,'0')).join('');
         const passwordHash = await hashSunnyPassword(password, saltText);
-        await db.collection('users').doc(username).set({username, displayName, email, passwordHash, passwordSalt:saltText, role:'Member', ownedGames:[], createdAt:firebase.firestore.FieldValue.serverTimestamp()});
-        currentUser=username; currentUserData={username,displayName,email,passwordHash,passwordSalt:saltText,role:'Member',ownedGames:[]}; localStorage.setItem(SESSION_KEY,username);
+        await firebase.firestore().collection('users').doc(username).set({username, displayName, email, passwordHash, passwordSalt:saltText, role:'Member', ownedGames:[], createdAt:firebase.firestore.FieldValue.serverTimestamp()});
+        currentUser=username; currentUserData={username,displayName,email,passwordHash,passwordSalt:saltText,role:'Member',ownedGames:[]}; localStorage.setItem('sunny_session',username);
         modal.classList.add('hidden'); renderAuth(); renderGames(); refreshAccountBox(); toast('Account erfolgreich erstellt.');
       } catch(e) { console.error(e); toast('Account konnte nicht erstellt werden: '+e.message); }
     });
 
     const oldRenderAuth = window.renderAuth;
-    window.renderAuth = function(){ oldRenderAuth(); refreshAccountBox(); };
+    if (typeof oldRenderAuth === 'function') window.renderAuth = function(){ oldRenderAuth(); refreshAccountBox(); };
     refreshAccountBox();
   })()`);
 }
