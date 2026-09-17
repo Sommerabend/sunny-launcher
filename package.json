@@ -1,6 +1,6 @@
 {
   "name": "sunny-launcher",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Sunny Games Launcher - AllayNetwork Gaming Platform",
   "main": "main.js",
   "scripts": {
@@ -12,7 +12,8 @@
   "devDependencies": {
     "electron": "^28.2.0",
     "electron-packager": "^17.1.2",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "electron-updater": "^6.3.9"
   },
   "build": {
     "appId": "de.allaynetwork.sunnylauncher",
@@ -30,11 +31,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Sommerabend",
+      "repo": "sunny-launcher",
+      "releaseType": "release"
     },
     "nsis": {
       "oneClick": false,
