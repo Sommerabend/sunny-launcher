@@ -23,10 +23,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build and publish Windows installer
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run dist -- --publish always
+      - name: Build Windows installer
+        run: npm run dist
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -35,5 +33,3 @@ jobs:
           path: release/*.exe
           if-no-files-found: error
           retention-days: 30
-
-# Build trigger refreshed: npm cache requires a lockfile, so caching is intentionally disabled.
