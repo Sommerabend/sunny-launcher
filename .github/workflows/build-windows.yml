@@ -1,9 +1,12 @@
-name: Build Sunny Launcher
+name: Build Sunny Games Launcher
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
@@ -11,18 +14,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+
       - name: Install dependencies
         run: npm install
-      - name: Build Windows installer
-        run: npm run dist -- --publish never
-      - name: Upload installer
+
+      - name: Build and publish Windows installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist -- --publish always
+
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Sunny-Launcher-Windows
+          name: Sunny-Games-Launcher-Windows
           path: release/*.exe
           if-no-files-found: error
           retention-days: 30
