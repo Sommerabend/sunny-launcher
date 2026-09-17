@@ -1,6 +1,6 @@
 {
   "name": "sunny-launcher",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "Sunny Games Launcher - AllayNetwork Gaming Platform",
   "main": "main.js",
   "scripts": {
@@ -33,7 +33,8 @@
           "target": "nsis",
           "arch": ["x64"]
         }
-      ]
+      ],
+      "requestedExecutionLevel": "asInvoker"
     },
     "publish": {
       "provider": "github",
@@ -46,7 +47,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Sunny Games Launcher"
+      "shortcutName": "Sunny Games Launcher",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "allowElevation": true,
+      "perMachine": false
     }
   }
 }
