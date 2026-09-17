@@ -1,20 +1,6 @@
 {
-  "name": "sunny-launcher",
-  "version": "2.0.0",
-  "description": "Sunny Launcher",
-  "main": "main.js",
-  "author": "Sunny Games / AllayNetwork",
-  "license": "MIT",
-  "scripts": {"start":"electron .","dist":"electron-builder --win nsis"},
-  "devDependencies": {"electron":"^37.3.1","electron-builder":"^26.0.12"},
-  "dependencies": {},
-  "build": {
-    "appId":"de.allaynetwork.sunnylauncher",
-    "productName":"Sunny Launcher",
-    "artifactName":"Sunny-Launcher-Setup-${version}.${ext}",
-    "directories":{"output":"release"},
-    "files":["main.js","preload.js","index.html","package.json"],
-    "win":{"target":[{"target":"nsis","arch":["x64"]}],"icon":"build/icon.ico"},
-    "nsis":{"oneClick":false,"allowToChangeInstallationDirectory":true,"createDesktopShortcut":true,"createStartMenuShortcut":true,"shortcutName":"Sunny Launcher"}
-  }
+  "name":"sunny-launcher","version":"2.0.0","description":"Sunny Launcher","main":"main.js","author":"Sunny Games / AllayNetwork","license":"MIT",
+  "scripts":{"start":"electron .","dist":"electron-builder --win nsis"},
+  "devDependencies":{"electron":"^37.3.1","electron-builder":"^26.0.12"},"dependencies":{},
+  "build":{"appId":"de.allaynetwork.sunnylauncher","productName":"Sunny Launcher","artifactName":"Sunny-Launcher-Setup-${version}.${ext}","directories":{"output":"release"},"files":["main.js","preload.js","index.html","package.json"],"win":{"target":[{"target":"nsis","arch":["x64"]}]},"nsis":{"oneClick":false,"allowToChangeInstallationDirectory":true,"createDesktopShortcut":true,"createStartMenuShortcut":true,"shortcutName":"Sunny Launcher"}}
 }
