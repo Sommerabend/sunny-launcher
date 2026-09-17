@@ -1,6 +1,6 @@
 {
   "name": "sunny-launcher",
-  "version": "3.2.2",
+  "version": "3.2.3",
   "description": "Sunny Games Launcher - AllayNetwork Gaming Platform",
   "main": "main.js",
   "scripts": {
@@ -9,31 +9,22 @@
     "pre-dist": "node make-icon.js",
     "dist": "electron-builder --win"
   },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "devDependencies": {
     "electron": "^28.2.0",
     "electron-packager": "^17.1.2",
-    "electron-builder": "^24.13.3",
-    "electron-updater": "^6.3.9"
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "de.allaynetwork.sunnylauncher",
     "productName": "Sunny Games Launcher",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "**/*",
-      "!release/**",
-      "!node_modules/.cache/**"
-    ],
+    "directories": {"output": "release"},
+    "files": ["**/*", "!release/**", "!node_modules/.cache/**"],
     "win": {
       "icon": "icon.ico",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
-      ],
+      "target": [{"target": "nsis", "arch": ["x64"]}],
       "requestedExecutionLevel": "asInvoker"
     },
     "publish": {
