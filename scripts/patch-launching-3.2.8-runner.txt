@@ -1,0 +1,1 @@
+This marker file intentionally triggers the existing launcher patch workflow; the launcher validation patch is applied by the repository workflow script.
