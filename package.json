@@ -1,6 +1,6 @@
 {
   "name": "sunny-launcher",
-  "version": "3.2.8",
+  "version": "3.3.0",
   "description": "Sunny Games Launcher - AllayNetwork Gaming Platform",
   "main": "main.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "dist": "electron-builder --win"
   },
   "dependencies": {
-    "electron-updater": "^6.3.9"
+    "electron-updater": "^6.3.9",
+    "adm-zip": "^0.5.16"
   },
   "devDependencies": {
     "electron": "^28.2.0",
@@ -20,11 +21,24 @@
   "build": {
     "appId": "de.allaynetwork.sunnylauncher",
     "productName": "Sunny Games Launcher",
-    "directories": {"output": "release"},
-    "files": ["**/*", "!release/**", "!node_modules/.cache/**"],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "**/*",
+      "!release/**",
+      "!node_modules/.cache/**"
+    ],
     "win": {
       "icon": "icon.ico",
-      "target": [{"target": "nsis", "arch": ["x64"]}],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "requestedExecutionLevel": "asInvoker"
     },
     "publish": {
@@ -43,7 +57,9 @@
       "deleteAppDataOnUninstall": false,
       "allowElevation": true,
       "perMachine": true,
-      "installerLanguages": ["en-US"],
+      "installerLanguages": [
+        "en-US"
+      ],
       "displayLanguageSelector": false
     }
   }
