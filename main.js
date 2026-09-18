@@ -4,6 +4,7 @@ const fs = require('fs');
 const https = require('https');
 const { spawn } = require('child_process');
 const { autoUpdater } = require('electron-updater');
+const AdmZip = require('adm-zip');
 
 let win;
 let updateInProgress = false;
@@ -123,13 +124,169 @@ function safeName(name){return String(name||'game').replace(/[^a-z0-9._-]/gi,'_'
 function downloadFile(url,destination,id){return new Promise((resolve,reject)=>{const file=fs.createWriteStream(destination);let received=0,total=0,settled=false;const fail=err=>{if(settled)return;settled=true;file.close();try{fs.unlinkSync(destination);}catch{}downloads.delete(id);reject(err);};const request=target=>{https.get(target,response=>{if(response.statusCode>=300&&response.statusCode<400&&response.headers.location){response.resume();request(new URL(response.headers.location,target).toString());return;}if(response.statusCode!==200){response.resume();fail(new Error('HTTP '+response.statusCode));return;}total=Number(response.headers['content-length']||0);response.on('data',chunk=>{received+=chunk.length;send('download-progress',{id,received,total,percent:total?Math.round(received/total*100):0});});response.pipe(file);file.on('finish',()=>file.close(()=>{if(settled)return;settled=true;downloads.delete(id);resolve(destination);}));}).on('error',fail);};downloads.set(id,{request,destination});request(url);});}
 ipcMain.handle('get-paths',()=>({appData:app.getPath('appData'),downloads:app.getPath('downloads'),desktop:app.getPath('desktop')}));
 ipcMain.handle('choose-install-folder',async()=>{const{dialog}=require('electron');const result=await dialog.showOpenDialog(win,{properties:['openDirectory','createDirectory'],title:'Installationsordner auswählen'});return result.canceled?null:result.filePaths[0];});
-function findFileRecursive(rootDir,targetName,maxDepth=5){if(!rootDir||!fs.existsSync(rootDir))return null;const wanted=String(targetName||'').toLowerCase();const walk=(dir,depth)=>{if(depth<0)return null;let entries=[];try{entries=fs.readdirSync(dir,{withFileTypes:true});}catch{return null;}for(const entry of entries){if(entry.name.startsWith('$')&&depth>2)continue;const full=path.join(dir,entry.name);if(entry.isFile()&&entry.name.toLowerCase()===wanted)return full;if(entry.isDirectory()){const found=walk(full,depth-1);if(found)return found;}}return null;};return walk(rootDir,maxDepth);}
-function setupSearchRoots(){return [...new Set([process.env.ProgramFiles,process.env['ProgramFiles(x86)'],process.env.LOCALAPPDATA,process.env.APPDATA,process.env.USERPROFILE].filter(Boolean))];}
-function readWindowsPE(file){try{if(!file||!fs.existsSync(file))return{ok:false,reason:'Datei nicht gefunden.'};const stat=fs.statSync(file);if(!stat.isFile()||stat.size<64)return{ok:false,reason:'Die Datei ist keine gültige Windows-Programmdatei.'};const fd=fs.openSync(file,'r');try{const head=Buffer.alloc(64);fs.readSync(fd,head,0,64,0);if(head[0]!==0x4d||head[1]!==0x5a)return{ok:false,reason:'Die Datei beginnt nicht mit einer Windows-EXE-Signatur (MZ).'};const peOffset=head.readUInt32LE(0x3c);if(peOffset<64||peOffset>stat.size-4)return{ok:false,reason:'Ungültiger Windows-PE-Header.'};const sig=Buffer.alloc(4);fs.readSync(fd,sig,0,4,peOffset);if(sig[0]!==0x50||sig[1]!==0x45||sig[2]!==0x00||sig[3]!==0x00)return{ok:false,reason:'Ungültiger Windows-PE-Header (PE).'};return{ok:true};}finally{fs.closeSync(fd);}}catch(e){return{ok:false,reason:'Die Spieldatei konnte nicht geprüft werden: '+e.message};}}
-async function runGameSetup(setupPath,game,installFolder){return await new Promise((resolve,reject)=>{const pe=readWindowsPE(setupPath);if(!pe.ok)return reject(new Error('Das Setup ist keine gültige Windows-EXE: '+pe.reason));const child=spawn(setupPath,[],{detached:false,stdio:'ignore',windowsHide:false,cwd:path.dirname(setupPath)});child.once('error',reject);child.once('exit',async code=>{if(code!==0)return reject(new Error('Das Setup wurde mit Exit-Code '+code+' beendet.'));let found=null;const configured=String(game.postInstallExecutable||'').trim();if(configured){if(path.isAbsolute(configured)&&fs.existsSync(configured))found=configured;else{found=findFileRecursive(installFolder,configured,6);if(!found)for(const rootDir of setupSearchRoots()){found=findFileRecursive(rootDir,configured,5);if(found)break;}}}if(!found&&game.title)for(const rootDir of [installFolder,...setupSearchRoots()]){found=findFileRecursive(rootDir,String(game.title).replace(/[^a-z0-9._-]/gi,'_')+'.exe',5);if(found)break;}if(!found)return reject(new Error('Setup abgeschlossen, aber die Startdatei wurde nicht gefunden. Hinterlege im Admin-Bereich den Namen der Start-EXE (z. B. MeinSpiel.exe).'));try{await launchInstalledExecutable(found);resolve(found);}catch(e){reject(e);}});});}
-ipcMain.handle('install-game',async(_,game)=>{if(!game||!game.downloadUrl)throw new Error('Kein Download-Link vorhanden.');const folder=game.installPath||path.join(app.getPath('appData'),'SunnyLauncher','Games',safeName(game.id||game.title));fs.mkdirSync(folder,{recursive:true});const ext=game.fileName?.includes('.')?path.extname(game.fileName):'.exe';const filename=safeName(game.fileName||`${game.title||'game'}${ext}`);const destination=path.join(folder,filename),id=`${Date.now()}-${Math.random().toString(16).slice(2)}`;send('download-start',{id,title:game.title,path:folder});try{await downloadFile(game.downloadUrl,destination,id);send('download-complete',{id,title:game.title,path:destination});const isSetup=game.installType==='setup'||game.runInstaller===true;if(isSetup&&/\.exe$/i.test(destination)){const executablePath=await runGameSetup(destination,game,folder);return{ok:true,id,path:destination,installPath:folder,executablePath,setup:true};}if(/\.exe$/i.test(destination)){const pe=readWindowsPE(destination);if(!pe.ok)throw new Error('Die heruntergeladene Spieldatei ist keine gültige Windows-EXE: '+pe.reason+' Prüfe im Admin-Bereich, ob wirklich die Windows-Version des Spiels hinterlegt ist.');}return{ok:true,id,path:destination,installPath:folder,executablePath:destination,setup:false};}catch(e){send('download-error',{id,title:game.title,error:e.message});throw e;}});
-async function launchInstalledExecutable(executablePath){if(!executablePath)throw new Error('Keine installierte EXE hinterlegt.');if(!fs.existsSync(executablePath))throw new Error('Die Spieldatei wurde nicht gefunden. Bitte installiere das Spiel erneut.');const pe=readWindowsPE(executablePath);if(!pe.ok)throw new Error('Diese Datei kann von Windows nicht als Programm gestartet werden: '+pe.reason+' Bitte installiere das Spiel erneut oder hinterlege im Admin-Bereich die richtige Windows-EXE.');const result=await shell.openPath(executablePath);if(result)throw new Error('Spiel konnte nicht gestartet werden: '+result);return true;}
-ipcMain.handle('launch-installed-game',async(_,game)=>launchInstalledExecutable(game?.executablePath));
+function findFileRecursive(rootDir,targetName,maxDepth=6){
+  if(!rootDir||!fs.existsSync(rootDir))return null;
+  const wanted=String(targetName||'').toLowerCase();
+  const walk=(dir,depth)=>{
+    if(depth<0)return null;
+    let entries=[];
+    try{entries=fs.readdirSync(dir,{withFileTypes:true});}catch{return null;}
+    for(const entry of entries){
+      if(entry.name.startsWith('$')&&depth>2)continue;
+      const full=path.join(dir,entry.name);
+      if(entry.isFile()&&entry.name.toLowerCase()===wanted)return full;
+      if(entry.isDirectory()){
+        const found=walk(full,depth-1);
+        if(found)return found;
+      }
+    }
+    return null;
+  };
+  return walk(rootDir,maxDepth);
+}
+function findFilesRecursive(rootDir,extension,maxDepth=6){
+  const result=[];
+  if(!rootDir||!fs.existsSync(rootDir))return result;
+  const ext=String(extension||'').toLowerCase();
+  const walk=(dir,depth)=>{
+    if(depth<0)return;
+    let entries=[];
+    try{entries=fs.readdirSync(dir,{withFileTypes:true});}catch{return;}
+    for(const entry of entries){
+      const full=path.join(dir,entry.name);
+      if(entry.isFile()&&(!ext||path.extname(entry.name).toLowerCase()===ext))result.push(full);
+      else if(entry.isDirectory()&&depth>0)walk(full,depth-1);
+    }
+  };
+  walk(rootDir,maxDepth);
+  return result;
+}
+function setupSearchRoots(){
+  return [...new Set([process.env.ProgramFiles,process.env['ProgramFiles(x86)'],process.env.LOCALAPPDATA,process.env.APPDATA,process.env.USERPROFILE].filter(Boolean))];
+}
+function readWindowsPE(file){
+  try{
+    if(!file||!fs.existsSync(file))return{ok:false,reason:'Datei nicht gefunden.'};
+    const stat=fs.statSync(file);
+    if(!stat.isFile()||stat.size<64)return{ok:false,reason:'Die Datei ist keine gültige Windows-Programmdatei.'};
+    const fd=fs.openSync(file,'r');
+    try{
+      const head=Buffer.alloc(64);
+      fs.readSync(fd,head,0,64,0);
+      if(head[0]!==0x4d||head[1]!==0x5a)return{ok:false,reason:'Die Datei beginnt nicht mit einer Windows-EXE-Signatur (MZ).'};
+      const peOffset=head.readUInt32LE(0x3c);
+      if(peOffset<64||peOffset>stat.size-4)return{ok:false,reason:'Ungültiger Windows-PE-Header.'};
+      const sig=Buffer.alloc(4);
+      fs.readSync(fd,sig,0,4,peOffset);
+      if(sig[0]!==0x50||sig[1]!==0x45||sig[2]!==0x00||sig[3]!==0x00)return{ok:false,reason:'Ungültiger Windows-PE-Header (PE).'};
+      return{ok:true};
+    }finally{fs.closeSync(fd);}
+  }catch(e){return{ok:false,reason:'Die Spieldatei konnte nicht geprüft werden: '+e.message};}
+}
+function scoreGameExecutable(file,game,rootDir){
+  const base=path.basename(file,path.extname(file)).toLowerCase();
+  const title=String(game?.title||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+  const normalizedBase=base.replace(/[^a-z0-9]+/g,'');
+  let score=0;
+  if(title&&normalizedBase===title)score+=1000;
+  if(title&&normalizedBase.includes(title))score+=500;
+  if(/(uninstall|unins|setup|installer|update|crash|godot)/i.test(base))score-=500;
+  if(fs.existsSync(path.join(path.dirname(file),base+'.pck')))score+=300;
+  if(rootDir&&path.dirname(file)===rootDir)score+=20;
+  return score;
+}
+function detectGameExecutable(folder,game){
+  const candidates=findFilesRecursive(folder,'.exe',8)
+    .map(file=>({file,pe:readWindowsPE(file)}))
+    .filter(x=>x.pe.ok)
+    .map(x=>({file:x.file,score:scoreGameExecutable(x.file,game,folder)}))
+    .sort((a,b)=>b.score-a.score||a.file.length-b.file.length);
+  if(!candidates.length)return null;
+  return candidates[0].file;
+}
+async function extractGameZip(zipPath,installFolder,game){
+  let zip;
+  try{zip=new AdmZip(zipPath);}catch(e){throw new Error('Die ZIP-Datei konnte nicht geöffnet werden: '+e.message);}
+  const entries=zip.getEntries();
+  if(!entries.length)throw new Error('Die ZIP-Datei enthält keine Dateien.');
+  for(const entry of entries){
+    const normalized=path.normalize(entry.entryName);
+    if(normalized.startsWith('..'+path.sep)||path.isAbsolute(normalized))throw new Error('Die ZIP-Datei enthält einen ungültigen Pfad.');
+  }
+  zip.extractAllTo(installFolder,true);
+  try{fs.unlinkSync(zipPath);}catch{}
+  const executablePath=detectGameExecutable(installFolder,game);
+  if(!executablePath){
+    throw new Error('ZIP entpackt, aber es wurde keine gültige Windows-EXE gefunden. Exportiere das Godot-Spiel als Windows Desktop und packe die EXE zusammen mit der PCK-Datei in die ZIP.');
+  }
+  return executablePath;
+}
+async function runGameSetup(setupPath,game,installFolder){
+  return await new Promise((resolve,reject)=>{
+    const pe=readWindowsPE(setupPath);
+    if(!pe.ok)return reject(new Error('Das Setup ist keine gültige Windows-EXE: '+pe.reason));
+    const child=spawn(setupPath,[],{detached:false,stdio:'ignore',windowsHide:false,cwd:path.dirname(setupPath)});
+    child.once('error',reject);
+    child.once('exit',async code=>{
+      if(code!==0)return reject(new Error('Das Setup wurde mit Exit-Code '+code+' beendet.'));
+      let found=null;
+      const configured=String(game.postInstallExecutable||'').trim();
+      if(configured){
+        if(path.isAbsolute(configured)&&fs.existsSync(configured))found=configured;
+        else{
+          found=findFileRecursive(installFolder,configured,8);
+          if(!found)for(const rootDir of setupSearchRoots()){found=findFileRecursive(rootDir,configured,6);if(found)break;}
+        }
+      }
+      if(!found&&game.title)for(const rootDir of [installFolder,...setupSearchRoots()]){
+        found=findFileRecursive(rootDir,String(game.title).replace(/[^a-z0-9._-]/gi,'_')+'.exe',6);
+        if(found)break;
+      }
+      if(!found)return reject(new Error('Setup abgeschlossen, aber die Start-EXE wurde nicht gefunden.'));
+      try{await launchInstalledExecutable(found);resolve(found);}catch(e){reject(e);}
+    });
+  });
+}
+ipcMain.handle('install-game',async(_,game)=>{
+  if(!game||!game.downloadUrl)throw new Error('Kein Download-Link vorhanden.');
+  const folder=game.installPath||path.join(app.getPath('appData'),'SunnyLauncher','Games',safeName(game.id||game.title));
+  fs.mkdirSync(folder,{recursive:true});
+  const isZip=game.packageType==='zip'||/\.zip(?:$|[?#])/i.test(String(game.downloadUrl));
+  const isSetup=game.installType==='setup'||game.runInstaller===true;
+  const ext=isZip?'.zip':(game.fileName?.includes('.')?path.extname(game.fileName):'.exe');
+  const filename=safeName(game.fileName||`${game.title||'game'}${ext}`);
+  const destination=path.join(folder,filename);
+  const id=`${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  send('download-start',{id,title:game.title,path:folder});
+  try{
+    await downloadFile(game.downloadUrl,destination,id);
+    send('download-complete',{id,title:game.title,path:destination});
+    let executablePath;
+    if(isZip){
+      executablePath=await extractGameZip(destination,folder,game);
+    }else if(isSetup&&/\.exe$/i.test(destination)){
+      executablePath=await runGameSetup(destination,game,folder);
+    }else{
+      executablePath=destination;
+      const pe=readWindowsPE(destination);
+      if(!pe.ok)throw new Error('Die heruntergeladene Spieldatei ist keine gültige Windows-EXE: '+pe.reason+' Prüfe, ob die Windows-Version des Spiels hinterlegt ist.');
+    }
+    return{ok:true,id,path:executablePath,executablePath,installPath:folder,setup:isSetup,packageType:isZip?'zip':'exe'};
+  }catch(e){
+    send('download-error',{id,title:game.title,error:e.message});
+    throw e;
+  }
+});
+async function launchInstalledExecutable(executablePath){
+  if(!executablePath)throw new Error('Keine installierte EXE hinterlegt.');
+  if(!fs.existsSync(executablePath))throw new Error('Die Spieldatei wurde nicht gefunden. Bitte installiere das Spiel erneut.');
+  const pe=readWindowsPE(executablePath);
+  if(!pe.ok)throw new Error('Diese Datei kann von Windows nicht als Programm gestartet werden: '+pe.reason+' Bitte installiere das Spiel erneut oder hinterlege die richtige Windows-EXE.');
+  const result=await shell.openPath(executablePath);
+  if(result)throw new Error('Spiel konnte nicht gestartet werden: '+result);
+  return true;
+}
+ipcMain.handle('launch-installed-game',async(_,game)=>launchInstalledExecutable(game?.executablePath||game?.path));
 ipcMain.handle('open-folder',async(_,folder)=>{if(folder&&fs.existsSync(folder))await shell.openPath(folder);});
 ipcMain.handle('open-external',async(_,url)=>{if(/^https?:\/\//i.test(url))await shell.openExternal(url);});
 ipcMain.handle('create-desktop-shortcut',async(_,targetPath)=>{if(!targetPath)targetPath=process.execPath;const shortcut=path.join(app.getPath('desktop'),'Sunny Games Launcher.lnk');const ok=shell.writeShortcutLink(shortcut,{target:targetPath,cwd:path.dirname(targetPath),description:'Sunny Games Launcher',icon:targetPath});return{ok,shortcut};});
