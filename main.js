@@ -277,6 +277,44 @@ ipcMain.handle('install-game',async(_,game)=>{
     throw e;
   }
 });
+let launchIntroInProgress = false;
+
+async function playLaunchIntro() {
+  if (launchIntroInProgress) return;
+  launchIntroInProgress = true;
+  return await new Promise((resolve) => {
+    const introWindow = new BrowserWindow({
+      fullscreen: true,
+      frame: false,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      closable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      show: false,
+      backgroundColor: '#030305',
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        autoplayPolicy: 'no-user-gesture-required'
+      }
+    });
+    introWindow.setMenuBarVisibility(false);
+    const finish = () => {
+      if (introWindow && !introWindow.isDestroyed()) introWindow.close();
+      launchIntroInProgress = false;
+      resolve();
+    };
+    introWindow.once('ready-to-show', () => {
+      if (!introWindow.isDestroyed()) introWindow.show();
+    });
+    introWindow.loadFile(path.join(__dirname, 'intro.html')).catch(() => finish());
+    setTimeout(finish, 6800);
+  });
+}
+
 async function launchInstalledExecutable(executablePath){
   if(!executablePath)throw new Error('Keine installierte EXE hinterlegt.');
   if(!fs.existsSync(executablePath))throw new Error('Die Spieldatei wurde nicht gefunden. Bitte installiere das Spiel erneut.');
@@ -286,7 +324,7 @@ async function launchInstalledExecutable(executablePath){
   if(result)throw new Error('Spiel konnte nicht gestartet werden: '+result);
   return true;
 }
-ipcMain.handle('launch-installed-game',async(_,game)=>launchInstalledExecutable(game?.executablePath||game?.path));
+ipcMain.handle('launch-installed-game',async(_,game)=>{await playLaunchIntro();return launchInstalledExecutable(game?.executablePath||game?.path);});
 ipcMain.handle('open-folder',async(_,folder)=>{if(folder&&fs.existsSync(folder))await shell.openPath(folder);});
 ipcMain.handle('open-external',async(_,url)=>{if(/^https?:\/\//i.test(url))await shell.openExternal(url);});
 ipcMain.handle('create-desktop-shortcut',async(_,targetPath)=>{if(!targetPath)targetPath=process.execPath;const shortcut=path.join(app.getPath('desktop'),'Sunny Games Launcher.lnk');const ok=shell.writeShortcutLink(shortcut,{target:targetPath,cwd:path.dirname(targetPath),description:'Sunny Games Launcher',icon:targetPath});return{ok,shortcut};});
