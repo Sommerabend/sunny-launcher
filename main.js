@@ -341,13 +341,14 @@ async function launchInstalledExecutable(executablePath){
   }
 }
 const http = require('http');
-
-ipcMain.handle('local-ai', async (_, prompt) => {
-  const body = JSON.stringify({model:'llama3.2',messages:[{role:'user',content:String(prompt||'')}],stream:false});
-  return await new Promise(resolve => {
-    const req=http.request({hostname:'127.0.0.1',port:11434,path:'/api/chat',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}},res=>{let data='';res.on('data',c=>data+=c);res.on('end',()=>{try{const j=JSON.parse(data);if(res.statusCode>=400)return resolve({ok:false,error:j.error||'Ollama-Fehler.'});resolve({ok:true,answer:j.message?.content||''});}catch(e){resolve({ok:false,error:'Antwort des lokalen Modells konnte nicht gelesen werden.'});}})});req.on('error',()=>resolve({ok:false,error:'Lokale KI ist nicht erreichbar. Starte Ollama mit einem installierten Modell (z.B. llama3.2).'}));req.write(body);req.end();
-  });
-});
+const OLLAMA_MODEL='llama3.2';
+function ollamaExe(){const c=[process.env.LOCALAPPDATA&&path.join(process.env.LOCALAPPDATA,'Programs','Ollama','ollama.exe'),process.env.ProgramFiles&&path.join(process.env.ProgramFiles,'Ollama','ollama.exe'),process.env['ProgramFiles(x86)']&&path.join(process.env['ProgramFiles(x86)'],'Ollama','ollama.exe')].filter(Boolean);return c.find(fs.existsSync)||'ollama';}
+function ollamaRequest(pathname,method='GET',body=null,timeout=5000){return new Promise((resolve,reject)=>{const payload=body?JSON.stringify(body):null;const req=http.request({hostname:'127.0.0.1',port:11434,path:pathname,method,timeout,headers:payload?{'Content-Type':'application/json','Content-Length':Buffer.byteLength(payload)}:{}},res=>{let data='';res.on('data',c=>data+=c);res.on('end',()=>{try{resolve({status:res.statusCode,data:JSON.parse(data)});}catch{resolve({status:res.statusCode,data:{}});}})});req.on('timeout',()=>req.destroy(new Error('timeout')));req.on('error',reject);if(payload)req.write(payload);req.end();});}
+async function ensureOllamaRunning(){try{await ollamaRequest('/api/tags');return true;}catch{}try{const child=spawn(ollamaExe(),['serve'],{detached:true,stdio:'ignore',windowsHide:true});child.unref();for(let i=0;i<20;i++){await new Promise(r=>setTimeout(r,500));try{await ollamaRequest('/api/tags');return true;}catch{}}}catch{}return false;}
+async function hasOllamaModel(){try{const r=await ollamaRequest('/api/tags');return (r.data?.models||[]).some(m=>String(m.name||'').split(':')[0]===OLLAMA_MODEL);}catch{return false;}}
+function pullOllamaModel(){return new Promise((resolve,reject)=>{const child=spawn(ollamaExe(),['pull',OLLAMA_MODEL],{windowsHide:true,stdio:'ignore'});child.on('error',reject);child.on('close',code=>code===0?resolve():reject(new Error('Das lokale Modell konnte nicht heruntergeladen werden.')));});}
+ipcMain.handle('local-ai-setup',async()=>{if(!(await ensureOllamaRunning()))return{ok:false,error:'Ollama ist nicht installiert. Installiere Ollama für Windows und klicke danach erneut auf „KI einrichten“.',needsInstall:true};if(await hasOllamaModel())return{ok:true,message:'Sunny AI ist bereit.'};try{await pullOllamaModel();return{ok:true,message:'llama3.2 wurde lokal eingerichtet.'};}catch(e){return{ok:false,error:e.message};}});
+ipcMain.handle('local-ai',async(_,prompt)=>{if(!(await ensureOllamaRunning()))return{ok:false,error:'Ollama ist nicht installiert oder konnte nicht gestartet werden.',needsSetup:true};if(!(await hasOllamaModel()))return{ok:false,error:'llama3.2 ist noch nicht installiert. Klicke auf „KI einrichten“.',needsSetup:true};try{const r=await ollamaRequest('/api/chat','POST',{model:OLLAMA_MODEL,messages:[{role:'user',content:String(prompt||'')}],stream:false},120000);if(r.status>=400)return{ok:false,error:r.data?.error||'Ollama-Fehler.'};return{ok:true,answer:r.data?.message?.content||''};}catch(e){return{ok:false,error:'Lokale KI konnte nicht erreicht werden: '+e.message};}});
 
 ipcMain.handle('launch-installed-game',async(_,game)=>{
   const executablePath=game?.executablePath||game?.path;
