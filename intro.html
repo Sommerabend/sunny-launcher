@@ -1,26 +1,341 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sunny Games Intro</title>
-<style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#030305}body{font-family:Arial,Helvetica,sans-serif;color:#fff}.intro{position:fixed;inset:0;background:#030305;display:flex;align-items:center;justify-content:center;overflow:hidden}.canvas{position:absolute;inset:0;width:100%;height:100%}.content{position:relative;z-index:2;text-align:center;opacity:0;transform:translateY(20px);}.sun{width:120px;height:120px;border-radius:50%;margin:0 auto 34px;background:radial-gradient(circle,#fff7b0 0,#ffd43b 42%,#ff9e00 72%,rgba(255,158,0,0) 73%);box-shadow:0 0 35px #ffd43b,0 0 100px #ff9e0088;transform:scale(.1);opacity:0}.small{font-size:18px;letter-spacing:7px;font-weight:700;color:#cdd2df;margin-bottom:14px}.title{font-size:clamp(54px,8vw,110px);font-weight:900;letter-spacing:6px;background:linear-gradient(90deg,#fff,#ffd43b,#fff);background-size:200% auto;-webkit-background-clip:text;background-clip:text;color:transparent}.bar{width:min(520px,70vw);height:4px;margin:28px auto 0;background:#202532;border-radius:20px;overflow:hidden}.bar i{display:block;height:100%;width:0;background:#ffd43b;box-shadow:0 0 15px #ffd43b}.fade{animation:fade 1s ease forwards 5.5s}@keyframes fade{to{opacity:0}}@keyframes sun{to{transform:scale(1);opacity:1}}@keyframes content{to{opacity:1;transform:none}}@keyframes bar{to{width:100%}}@keyframes title{to{background-position:200% center}} </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sunny Games Intro</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #030305;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #intro-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, #111122 0%, #030305 100%);
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
 </head>
 <body>
-<div class="intro" id="intro"><canvas class="canvas" id="canvas"></canvas><div class="content" id="content"><div class="sun" id="sun"></div><div class="small">DEVELOPED BY</div><div class="title">SUNNY GAMES</div><div class="bar"><i id="bar"></i></div></div></div>
-<script>
-const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d');let particles=[];let start=performance.now();let audio;
-function resize(){canvas.width=innerWidth*devicePixelRatio;canvas.height=innerHeight*devicePixelRatio;canvas.style.width=innerWidth+'px';canvas.style.height=innerHeight+'px';ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0)}addEventListener('resize',resize);resize();
-function initAudio(){try{audio=new (window.AudioContext||window.webkitAudioContext)();if(audio.state==='suspended')audio.resume();}catch(e){}}
-function tone(freq,dur,when=0,type='sine',gain=.035){if(!audio)return;const t=audio.currentTime+when,o=audio.createOscillator(),g=audio.createGain();o.type=type;o.frequency.setValueAtTime(freq,t);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(gain,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g).connect(audio.destination);o.start(t);o.stop(t+dur+.03)}
-function riser(){if(!audio)return;const t=audio.currentTime,o=audio.createOscillator(),g=audio.createGain();o.type='sawtooth';o.frequency.setValueAtTime(70,t);o.frequency.exponentialRampToValueAtTime(520,t+1.5);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.045,t+.15);g.gain.exponentialRampToValueAtTime(.0001,t+1.5);o.connect(g).connect(audio.destination);o.start(t);o.stop(t+1.55)}
-function impact(){tone(80,.45,0,'sine',.09);tone(180,.3,.02,'triangle',.045)}
-function text1(){tone(440,.12,0,'sine',.025);tone(660,.18,.08,'sine',.025)}
-function text2(){tone(520,.12,0,'sine',.025);tone(780,.22,.08,'sine',.03)}
-function spawn(){particles=[];for(let i=0;i<100;i++){const a=Math.random()*Math.PI*2,s=Math.random()*2+1;particles.push({x:innerWidth/2,y:innerHeight/2,vx:Math.cos(a)*s,vy:Math.sin(a)*s,r:Math.random()*2+1,life:1})}}
-function draw(now){const t=(now-start)/1000;ctx.clearRect(0,0,innerWidth,innerHeight);for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.life-=.008;ctx.globalAlpha=Math.max(0,p.life);ctx.fillStyle='#ffd43b';ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;requestAnimationFrame(draw)}requestAnimationFrame(draw);
-document.addEventListener('DOMContentLoaded',()=>{initAudio();spawn();riser();document.getElementById('sun').style.animation='sun 1.15s cubic-bezier(.2,.8,.2,1) forwards';setTimeout(impact,1500);setTimeout(()=>{document.querySelector('.content').style.animation='content .8s ease forwards';text1()},2200);setTimeout(text2,3000);document.getElementById('bar').style.animation='bar 3.1s linear forwards';document.querySelector('.title').style.animation='title 2s linear infinite';setTimeout(()=>document.getElementById('intro').classList.add('fade'),0)});
-</script>
+
+    <div id="intro-container">
+        <canvas id="introCanvas"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('introCanvas');
+        const ctx = canvas.getContext('2d');
+        let audioCtx = null;
+
+        const soundTriggers = {
+            riser: false,
+            impact: false,
+            text1: false,
+            text2: false
+        };
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Audio sofort zum frühestmöglichen Zeitpunkt initialisieren
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playRiserSound() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const filter = audioCtx.createBiquadFilter();
+
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(35, now);
+            osc.frequency.exponentialRampToValueAtTime(120, now + 1.5);
+
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(100, now);
+            filter.frequency.exponentialRampToValueAtTime(600, now + 1.5);
+
+            gain.gain.setValueAtTime(0.01, now);
+            gain.gain.linearRampToValueAtTime(0.3, now + 1.4);
+            gain.gain.linearRampToValueAtTime(0.001, now + 1.5);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start(now);
+            osc.stop(now + 1.5);
+        }
+
+        function playImpactSound() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(130, now);
+            osc.frequency.exponentialRampToValueAtTime(30, now + 1.2);
+
+            gain.gain.setValueAtTime(0.7, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start(now);
+            osc.stop(now + 1.5);
+        }
+
+        function playText1Sound() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, now);
+            osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.3);
+
+            gain.gain.setValueAtTime(0.01, now);
+            gain.gain.linearRampToValueAtTime(0.08, now + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.8);
+        }
+
+        function playText2Sound() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+
+            const chord = [261.63, 329.63, 392.00, 493.88, 587.33];
+
+            chord.forEach((freq, idx) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                const filter = audioCtx.createBiquadFilter();
+
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(freq, now + (idx * 0.04));
+
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(2000, now);
+
+                gain.gain.setValueAtTime(0.01, now + (idx * 0.04));
+                gain.gain.linearRampToValueAtTime(0.12, now + 0.1 + (idx * 0.04));
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.5);
+
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(now + (idx * 0.04));
+                osc.stop(now + 2.5);
+            });
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.angle = Math.random() * Math.PI * 2;
+                this.speed = Math.random() * 5 + 1;
+                this.radius = Math.random() * 3 + 1;
+                this.life = 1;
+                this.decay = Math.random() * 0.02 + 0.01;
+                this.color = `hsl(${Math.random() * 25 + 30}, 100%, 60%)`;
+            }
+
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+                this.life -= this.decay;
+            }
+
+            draw(context) {
+                context.save();
+                context.globalAlpha = Math.max(0, this.life);
+                context.beginPath();
+                context.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                context.fillStyle = this.color;
+                context.shadowColor = '#ffaa00';
+                context.shadowBlur = 10;
+                context.fill();
+                context.restore();
+            }
+        }
+
+        let animationFrame;
+        let startTime = null;
+        let particles = [];
+
+        function animate(timestamp) {
+            if (!startTime) startTime = timestamp;
+            const progress = (timestamp - startTime) / 1000;
+
+            if (progress >= 0.0 && !soundTriggers.riser) {
+                playRiserSound();
+                soundTriggers.riser = true;
+            }
+
+            if (progress >= 1.5 && !soundTriggers.impact) {
+                playImpactSound();
+                soundTriggers.impact = true;
+            }
+
+            if (progress >= 2.2 && !soundTriggers.text1) {
+                playText1Sound();
+                soundTriggers.text1 = true;
+            }
+
+            if (progress >= 3.0 && !soundTriggers.text2) {
+                playText2Sound();
+                soundTriggers.text2 = true;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2 - 40;
+
+            let sunScale = Math.min(1, progress / 1.5);
+            let sunRadius = 65 * sunScale;
+
+            if (progress > 1.5) {
+                sunRadius += Math.sin((progress - 1.5) * 5) * 3.5;
+            }
+
+            if (progress > 0.2) {
+                const gradient = ctx.createRadialGradient(centerX, centerY, 5, centerX, centerY, sunRadius * 2.8);
+                gradient.addColorStop(0, 'rgba(255, 210, 80, 0.9)');
+                gradient.addColorStop(0.4, 'rgba(255, 100, 0, 0.4)');
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, sunRadius * 2.8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            if (sunScale > 0) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, sunRadius, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffb700';
+                ctx.shadowColor = '#ff5500';
+                ctx.shadowBlur = 40;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            if (progress >= 1.5 && progress <= 1.6 && particles.length < 30) {
+                for (let i = 0; i < 35; i++) {
+                    particles.push(new Particle(centerX, centerY));
+                }
+            }
+
+            particles.forEach((p, index) => {
+                p.update();
+                p.draw(ctx);
+                if (p.life <= 0) particles.splice(index, 1);
+            });
+
+            if (progress > 2.2) {
+                let text1Alpha = Math.min(1, (progress - 2.2) * 3);
+                ctx.save();
+                ctx.globalAlpha = text1Alpha;
+                ctx.font = '300 18px "Segoe UI", sans-serif';
+                ctx.fillStyle = '#dddddd';
+                ctx.textAlign = 'center';
+                ctx.letterSpacing = '5px';
+                ctx.fillText('DEVELOPED BY', centerX, centerY + 120);
+                ctx.restore();
+            }
+
+            if (progress > 3.0) {
+                let text2Alpha = Math.min(1, (progress - 3.0) * 3);
+                let scalePulse = Math.max(1, 1.25 - (progress - 3.0) * 0.8);
+
+                ctx.save();
+                ctx.globalAlpha = text2Alpha;
+                ctx.font = `900 ${Math.round(44 * scalePulse)}px "Segoe UI", sans-serif`;
+                
+                let textGradient = ctx.createLinearGradient(centerX - 150, 0, centerX + 150, 0);
+                textGradient.addColorStop(0, '#ffffff');
+                textGradient.addColorStop(0.5, '#ffee55');
+                textGradient.addColorStop(1, '#ff6600');
+
+                ctx.fillStyle = textGradient;
+                ctx.textAlign = 'center';
+                ctx.shadowColor = 'rgba(255, 140, 0, 0.8)';
+                ctx.shadowBlur = 20;
+                
+                ctx.fillText('SUNNY GAMES', centerX, centerY + 175);
+                ctx.restore();
+            }
+
+            if (progress > 5.5) {
+                let fadeOutAlpha = (progress - 5.5) / 1.0;
+                ctx.fillStyle = `rgba(3, 3, 5, ${fadeOutAlpha})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                if (progress >= 6.5) {
+                    cancelAnimationFrame(animationFrame);
+                    return;
+                }
+            }
+
+            animationFrame = requestAnimationFrame(animate);
+        }
+
+        // Sofort ausführen beim Laden
+        window.addEventListener('DOMContentLoaded', () => {
+            initAudio();
+            requestAnimationFrame(animate);
+        });
+    </script>
 </body>
 </html>
