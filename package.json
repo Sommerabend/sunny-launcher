@@ -60,7 +60,9 @@
       "installerLanguages": [
         "en-US"
       ],
-      "displayLanguageSelector": false
+      "displayLanguageSelector": false,
+      "include": "build/installer.nsh",
+      "uninstallDisplayName": "Sunny Games Launcher"
     }
   }
 }
