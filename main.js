@@ -340,6 +340,15 @@ async function launchInstalledExecutable(executablePath){
     throw new Error('Spiel konnte nicht gestartet werden: '+(e.message||e));
   }
 }
+const http = require('http');
+
+ipcMain.handle('local-ai', async (_, prompt) => {
+  const body = JSON.stringify({model:'llama3.2',messages:[{role:'user',content:String(prompt||'')}],stream:false});
+  return await new Promise(resolve => {
+    const req=http.request({hostname:'127.0.0.1',port:11434,path:'/api/chat',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}},res=>{let data='';res.on('data',c=>data+=c);res.on('end',()=>{try{const j=JSON.parse(data);if(res.statusCode>=400)return resolve({ok:false,error:j.error||'Ollama-Fehler.'});resolve({ok:true,answer:j.message?.content||''});}catch(e){resolve({ok:false,error:'Antwort des lokalen Modells konnte nicht gelesen werden.'});}})});req.on('error',()=>resolve({ok:false,error:'Lokale KI ist nicht erreichbar. Starte Ollama mit einem installierten Modell (z.B. llama3.2).'}));req.write(body);req.end();
+  });
+});
+
 ipcMain.handle('launch-installed-game',async(_,game)=>{
   const executablePath=game?.executablePath||game?.path;
   if(!executablePath)throw new Error('Keine installierte EXE hinterlegt.');
