@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('sunnyDesktop', {
   openExternal: url => ipcRenderer.invoke('open-external', url),
   createDesktopShortcut: target => ipcRenderer.invoke('create-desktop-shortcut', target),
   checkUpdate: () => ipcRenderer.invoke('check-update'),
+  localAI: prompt => ipcRenderer.invoke('local-ai', prompt),
   onDownloadProgress: fn => ipcRenderer.on('download-progress', (_, data) => fn(data)),
   onDownloadStart: fn => ipcRenderer.on('download-start', (_, data) => fn(data)),
   onDownloadComplete: fn => ipcRenderer.on('download-complete', (_, data) => fn(data)),
