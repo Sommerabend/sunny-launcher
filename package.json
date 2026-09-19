@@ -1,6 +1,6 @@
 {
   "name": "sunny-launcher",
-  "version": "3.3.1",
+  "version": "3.3.2",
   "description": "Sunny Games Launcher - AllayNetwork Gaming Platform",
   "main": "main.js",
   "scripts": {
@@ -55,8 +55,8 @@
       "shortcutName": "Sunny Games Launcher",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
-      "allowElevation": true,
-      "perMachine": true,
+      "allowElevation": false,
+      "perMachine": false,
       "installerLanguages": [
         "en-US"
       ],
