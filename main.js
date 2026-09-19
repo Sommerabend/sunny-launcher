@@ -320,11 +320,32 @@ async function launchInstalledExecutable(executablePath){
   if(!fs.existsSync(executablePath))throw new Error('Die Spieldatei wurde nicht gefunden. Bitte installiere das Spiel erneut.');
   const pe=readWindowsPE(executablePath);
   if(!pe.ok)throw new Error('Diese Datei kann von Windows nicht als Programm gestartet werden: '+pe.reason+' Bitte installiere das Spiel erneut oder hinterlege die richtige Windows-EXE.');
-  const result=await shell.openPath(executablePath);
-  if(result)throw new Error('Spiel konnte nicht gestartet werden: '+result);
-  return true;
+  const workingDirectory=path.dirname(executablePath);
+  try{
+    const child=spawn(executablePath,[],{
+      cwd:workingDirectory,
+      detached:true,
+      stdio:'ignore',
+      windowsHide:false
+    });
+    await new Promise((resolve,reject)=>{
+      let settled=false;
+      const fail=(err)=>{if(settled)return;settled=true;reject(err);};
+      child.once('error',fail);
+      child.once('spawn',()=>{if(settled)return;settled=true;resolve();});
+    });
+    child.unref();
+    return true;
+  }catch(e){
+    throw new Error('Spiel konnte nicht gestartet werden: '+(e.message||e));
+  }
 }
-ipcMain.handle('launch-installed-game',async(_,game)=>{await playLaunchIntro();return launchInstalledExecutable(game?.executablePath||game?.path);});
+ipcMain.handle('launch-installed-game',async(_,game)=>{
+  const executablePath=game?.executablePath||game?.path;
+  if(!executablePath)throw new Error('Keine installierte EXE hinterlegt.');
+  await playLaunchIntro();
+  return launchInstalledExecutable(executablePath);
+});
 ipcMain.handle('open-folder',async(_,folder)=>{if(folder&&fs.existsSync(folder))await shell.openPath(folder);});
 ipcMain.handle('open-external',async(_,url)=>{if(/^https?:\/\//i.test(url))await shell.openExternal(url);});
 ipcMain.handle('create-desktop-shortcut',async(_,targetPath)=>{if(!targetPath)targetPath=process.execPath;const shortcut=path.join(app.getPath('desktop'),'Sunny Games Launcher.lnk');const ok=shell.writeShortcutLink(shortcut,{target:targetPath,cwd:path.dirname(targetPath),description:'Sunny Games Launcher',icon:targetPath});return{ok,shortcut};});
