@@ -65,6 +65,7 @@ async function checkLauncherUpdate() {
   try {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.forceDevUpdateConfig = false;
     autoUpdater.allowDowngrade = false;
     await autoUpdater.checkForUpdates();
   } catch (e) {
@@ -122,6 +123,17 @@ function injectAccountFeatures() {
 function send(channel,payload){if(win&&!win.isDestroyed())win.webContents.send(channel,payload);}
 function safeName(name){return String(name||'game').replace(/[^a-z0-9._-]/gi,'_').slice(0,80);}
 function downloadFile(url,destination,id){return new Promise((resolve,reject)=>{const file=fs.createWriteStream(destination);let received=0,total=0,settled=false;const fail=err=>{if(settled)return;settled=true;file.close();try{fs.unlinkSync(destination);}catch{}downloads.delete(id);reject(err);};const request=target=>{https.get(target,response=>{if(response.statusCode>=300&&response.statusCode<400&&response.headers.location){response.resume();request(new URL(response.headers.location,target).toString());return;}if(response.statusCode!==200){response.resume();fail(new Error('HTTP '+response.statusCode));return;}total=Number(response.headers['content-length']||0);response.on('data',chunk=>{received+=chunk.length;send('download-progress',{id,received,total,percent:total?Math.round(received/total*100):0});});response.pipe(file);file.on('finish',()=>file.close(()=>{if(settled)return;settled=true;downloads.delete(id);resolve(destination);}));}).on('error',fail);};downloads.set(id,{request,destination});request(url);});}
+ipcMain.handle('install-launcher-update',async(_,url)=>{
+  if(!/^https?:\/\//i.test(String(url||'')))return{ok:false,error:'Ungültiger Update-Link.'};
+  try{
+    const target=path.join(app.getPath('temp'),'Sunny-Games-Launcher-Update-'+Date.now()+'.exe');
+    await downloadFile(String(url),target,'launcher-update-'+Date.now());
+    const child=spawn(target,[],{detached:true,stdio:'ignore',windowsHide:false});
+    child.unref();
+    setTimeout(()=>app.quit(),350);
+    return{ok:true};
+  }catch(e){return{ok:false,error:'Launcher-Update konnte nicht heruntergeladen werden: '+(e?.message||e)}}
+});
 ipcMain.handle('get-paths',()=>({appData:app.getPath('appData'),downloads:app.getPath('downloads'),desktop:app.getPath('desktop')}));
 ipcMain.handle('choose-install-folder',async()=>{const{dialog}=require('electron');const result=await dialog.showOpenDialog(win,{properties:['openDirectory','createDirectory'],title:'Installationsordner auswählen'});return result.canceled?null:result.filePaths[0];});
 function findFileRecursive(rootDir,targetName,maxDepth=6){
